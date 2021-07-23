@@ -1,0 +1,61 @@
+---
+- name: Remove host from Tower
+  hosts: localhost
+  gather_facts: false
+  
+  tasks:
+    # Parameter examples for hosts
+    # hostname: [IBM Hostname]
+
+    - name: Set Variables
+      set_fact:
+
+        tower_url: "{{ lookup('env', 'tower_url') }}"
+        tower_user: "{{ lookup('env', 'tower_user') }}"
+        tower_token: "{{ lookup('env', 'tower_token') }}"
+
+        hashicorp_url: "{{ lookup('env','hashicorp_url') }}"
+        hashicorp_token: "{{ lookup('env','hashicorp_token') }}"
+
+        inventory_name: "base_inventory"
+        organization_name: "default"        
+      
+    - name: 'Get host variables from tower'
+      uri:
+        url: "{{ tower_url }}/api/v2/hosts/{{ hostname }}++{{ inventory_name }}++{{ organization_name }}/variable_data/"
+        method: GET
+        headers:
+          Content-Type: 'application/json'
+          Authorization: "Bearer {{ tower_token }}"
+        body:
+        body_format: json
+        validate_certs: false
+        use_proxy: false
+      register: host_data      
+
+    - name: Delete entry from Hashicorp if exists
+      uri:
+        url: "{{ hashicorp_url }}/metadata/{{ host_data.json.ostype }}/{{ hostname }}"
+        validate_certs: "no"
+        method: DELETE
+        headers:
+          X-Vault-Token: "{{ hashicorp_token }}"
+          Content-Type: "application/json"
+          X-Vault-Request: "true"   
+        status_code: 204
+      when: host_data.json.cred_provider == 'hashicorp'    
+
+    - name: Remove from tower
+      uri:
+        url: "{{ tower_url }}/api/v2/hosts/{{ hostname }}++{{ inventory_name }}++{{ organization_name }}/"
+        method: DELETE
+        headers:
+          Content-Type: 'application/json'
+          Authorization: "Bearer {{ tower_token }}"
+        validate_certs: false
+        use_proxy: false
+        status_code: 204
+      register: update_host
+
+
+...    

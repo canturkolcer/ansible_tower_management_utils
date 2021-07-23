@@ -1,0 +1,25 @@
+---
+
+hostgroups:
+  e1:
+    aix: ['host_group_1', 'host_group_2', 'host_group_3']
+    windows: ['host_group_1', 'host_group_2', 'host_group_3']
+    linux: ['host_group_1', 'host_group_2', 'host_group_3']
+  e2:
+    aix: ['host_group_1', 'host_group_2', 'host_group_3']
+    windows: ['host_group_1', 'host_group_2', 'host_group_3']
+    linux: ['host_group_1', 'host_group_2', 'host_group_3']
+  na1:
+    aix: ['host_group_1', 'host_group_2', 'host_group_3']
+    windows: ['host_group_1', 'host_group_2', 'host_group_3']
+    linux: ['host_group_1', 'host_group_2', 'host_group_3']  
+  na2:
+    aix: ['host_group_1', 'host_group_2', 'host_group_3']
+    windows: ['host_group_1', 'host_group_2', 'host_group_3']
+    linux: ['host_group_1', 'host_group_2', 'host_group_3'] 
+
+teamgroups:
+  team1: ['team1']
+  team2: ['team2']
+  team3: ['team3']
+...

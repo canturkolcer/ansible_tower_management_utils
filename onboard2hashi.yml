@@ -1,0 +1,29 @@
+---
+- name: Onboard host to Hashicorp Vault
+  hosts: localhost
+  gather_facts: false
+
+  tasks:
+
+    - name: Set general variables
+      set_fact:
+
+        tower_url: "{{ lookup('env', 'tower_url') }}"
+        tower_user: "{{ lookup('env', 'tower_user') }}"
+        tower_token: "{{ lookup('env', 'tower_token') }}"
+
+        hashicorp_url: "{{ lookup('env','hashicorp_url') }}"
+        hashicorp_token: "{{ lookup('env','hashicorp_token') }}"
+
+        inventory_name: "base_inventory"
+        organization_name: "default"
+
+
+    - name: Migration tasks
+      include_tasks: hashicorp_onboarding_tasks.yml
+      loop: "{{ server_list.split(',') }}"
+      loop_control:
+        loop_var: hostname
+      no_log: true           
+                         
+...    

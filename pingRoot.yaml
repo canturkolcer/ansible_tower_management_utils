@@ -1,0 +1,24 @@
+---
+# Ansible ping with become privileges
+
+- name: win_ping
+  win_ping:
+  when: (ostype == "windows")
+  register: ping_result_win
+
+- name: set_fact win_ping
+  set_fact:
+    ping_result: "{{ ping_result_win.ping }}"
+  when: ostype == "windows" and not ping_result_win.failed
+  
+- name: unix_ping
+  ping:
+  when: (ostype == "linux") or (ostype == "aix")
+  register: ping_result_unix
+  become: true
+  become_user: root    
+
+- name: set_fact unix_ping
+  set_fact:
+    ping_result: "{{ ping_result_unix.ping }}"
+  when: ostype != "windows" and not ping_result_unix.failed  

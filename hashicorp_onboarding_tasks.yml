@@ -1,0 +1,55 @@
+---
+# Onboarding tasks to hashicorp Vault
+
+  
+  - name: Get host variables from tower
+    uri:
+      url: "{{ tower_url }}/api/v2/hosts/{{ hostname }}++{{ inventory_name }}++{{ organization_name }}/variable_data/"
+      method: GET
+      headers:
+        Content-Type: 'application/json'
+        Authorization: "Bearer {{ tower_token }}"
+      body:
+      body_format: json
+      validate_certs: false
+      use_proxy: false
+    register: host_data
+    
+  - name: set user and password for server
+    set_fact:
+      user: "{{ lookup('env', host_data.json.ostype  ~ '_username') }}"
+      initial_pass: "{{ lookup('env', host_data.json.ostype  ~ '_password') }}"    
+
+  - name: set query variables
+    set_fact:
+      query:
+        data:
+          username: "{{ user }}"
+          password: "{{ initial_pass }}" 
+      variables_json: "{{ host_data.json | regex_replace('cyberark', 'hashicorp') }}"  
+
+  - name: 'call API - Set initial credentials'
+    uri:
+      url: "{{ hashicorp_url }}/data/{{ host_data.json.ostype  }}/{{ hostname }}"
+      validate_certs: "no"
+      method: POST
+      headers:
+        X-Vault-Token: "{{ hashicorp_token }}"
+        Content-Type: "application/json"
+        X-Vault-Request: "true"
+      body_format: json
+      body: "{{ query }}" 
+
+  - name: Update Host variables on tower
+    uri:
+      url: "{{ tower_url }}/api/v2/hosts/{{ hostname }}++{{ inventory_name }}++{{ organization_name }}/variable_data/"
+      method: PUT
+      headers:
+        Content-Type: 'application/json'
+        Authorization: "Bearer {{ tower_token }}"
+      body: "{{ variables_json }}"
+      body_format: json
+      validate_certs: false
+      use_proxy: false
+      status_code: 200
+    when: host_data.json.cred_provider == 'cyberark'  

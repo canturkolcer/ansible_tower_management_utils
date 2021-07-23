@@ -1,0 +1,67 @@
+---
+- name: Onboard host to Cyberark (GPAM)
+  hosts: localhost
+  gather_facts: false
+
+  tasks:
+    # Parameter examples for hosts
+    # hostname: [Hostname]
+
+    - name: Set Variables
+      set_fact:
+
+        tower_url: "{{ lookup('env', 'tower_url') }}"
+        tower_user: "{{ lookup('env', 'tower_user') }}"
+        tower_token: "{{ lookup('env', 'tower_token') }}"
+
+        hashicorp_url: "{{ lookup('env','hashicorp_url') }}"
+        hashicorp_token: "{{ lookup('env','hashicorp_token') }}"
+
+        inventory_name: "base_inventory"
+        organization_name: "default"
+
+    - name: 'Get host variables from tower'
+      uri:
+        url: "{{ tower_url }}/api/v2/hosts/{{ hostname }}++{{ inventory_name }}++{{ organization_name }}/variable_data/"
+        method: GET
+        headers:
+          Content-Type: 'application/json'
+          Authorization: "Bearer {{ tower_token }}"
+        body:
+        body_format: json
+        validate_certs: false
+        use_proxy: false
+      register: host_data
+
+    - name: 'Change credential provider from hashicorp to cyberark'
+      block:
+        - name: Set variable to cyberark
+          set_fact:
+            variables_json: "{{ host_data.json | regex_replace('hashicorp', 'cyberark') }}"         
+
+        - name: Update Host variables on tower
+          uri:
+            url: "{{ tower_url }}/api/v2/hosts/{{ hostname }}++{{ inventory_name }}++{{ organization_name }}/variable_data/"
+            method: PUT
+            headers:
+              Content-Type: 'application/json'
+              Authorization: "Bearer {{ tower_token }}"
+            body: "{{ variables_json }}"
+            body_format: json
+            validate_certs: false
+            use_proxy: false
+            status_code: 200
+          register: update_host
+
+        - name: Delete entry from Hashicorp if success
+          uri:
+            url: "{{ hashicorp_url }}/metadata/{{ variables_json.ostype }}/{{ hostname }}"
+            validate_certs: "no"
+            method: DELETE
+            headers:
+              X-Vault-Token: "{{ hashicorp_token }}"
+              Content-Type: "application/json"
+              X-Vault-Request: "true"   
+            status_code: 204
+          when: host_data.json is defined and host_data.json | length > 0
+...    

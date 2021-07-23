@@ -1,0 +1,160 @@
+---
+- name: Add host to inventory and configure it
+  hosts: localhost
+
+  vars_files:
+    - vars/selectors.yml
+    - vars/group_definitions.yml
+
+  tasks:
+    # Parameter examples for hosts
+    # fqdn: [Hostname]
+    # tier: production
+    # ostype: [linux|aix|windows]
+    # devicetype: compute
+    # ansible_host: [IP to connect server]
+    # customer_fqdn: [FQDN]
+    # ipaddress: [server ip, adm interface]
+    # cred_provider: [cyberark|hashicorp]
+    # responsible_teams: [list of teams]
+
+    - name: Set Variables
+      set_fact:
+        host_groups_id: []
+        host_groups_id_tmp: []
+
+        tower_url: "{{ lookup('env', 'tower_url') }}"
+        tower_user: "{{ lookup('env', 'tower_user') }}"
+        tower_token: "{{ lookup('env', 'tower_token') }}"
+
+        hashicorp_url: "{{ lookup('env','hashicorp_url') }}"
+        hashicorp_token: "{{ lookup('env','hashicorp_token') }}"
+        datacenter: "{{ dc_selector[ fqdn[:4] ]}}"
+        user: "{{ lookup('env', ostype ~ '_username') }}"
+        initial_pass: "{{ lookup('env', ostype ~ '_password') }}"
+        host_description: "{{ ansible_date_time.date }} - {{ ansible_date_time.time }} - Added by {{ tower_user }}"
+
+        inventory_name: "base_inventory"
+        organization_name: "default"
+
+    - name: 'Add Host groups'
+      set_fact:
+        host_groups: "{{ hostgroups[datacenter][ostype] + teamgroups['automation'] }}"
+      when: datacenter is defined and ostype is defined
+
+    - name: 'Add team groups'
+      set_fact:
+        host_groups: "{{ host_groups + teamgroups[item]}}"
+      loop: "{{ responsible_teams.split(',') }}"
+      when: responsible_teams is defined and (responsible_teams|length > 0)
+
+      # Host Var content
+      # fqdn: hostname
+      # tier: production
+      # ostype: windows
+      # devicetype: compute
+      # ansible_host: 10.1.1.1
+      # customer_fqdn: hostname.domain
+      # ipaddress: 10.2.2.2
+
+      # datacenter: e1
+      # cred_provider: hashicorp
+      # ansible_user: windowsuser
+    - name: 'Create host in inventory'
+      uri:
+        url: "{{ tower_url }}/api/v2/inventories/{{ inventory_name }}++{{ organization_name }}/hosts/"
+        method: POST
+        headers:
+          Content-Type: 'application/json'
+          Authorization: "Bearer {{ tower_token }}"
+        body:
+          name: "{{ 'alz_' ~ fqdn }}"
+          description: "{{ host_description }}"
+          variables: "{ 'fqdn': {{ fqdn }}, 'tier': {{ tier }}, 'ostype': {{ ostype }}, 'devicetype': {{ devicetype }}, 'ansible_host': {{ ansible_host }}, 'customer_fqdn': {{ customer_fqdn }}, 'ipaddress': {{ ipaddress }}, 'datacenter': {{ datacenter }}, 'cred_provider': {{ cred_provider }}, 'ansible_user': {{ user }} }"
+        body_format: json
+        validate_certs: false
+        use_proxy: false
+        status_code: 201
+      register: create_host
+
+    #     create_host:
+    #      id: 16921
+    #      status: 201
+    # - name: "debug"
+    #   debug:
+    #     msg: "{{ create_host }}"
+
+    - name: 'Map host_groups to IDs'
+      uri:
+        url: "{{ tower_url }}/api/v2/inventories/{{ inventory_name }}++{{ organization_name }}/groups?search={{ item }}"
+        method: GET
+        headers:
+          Content-Type: 'application/json'
+          Authorization: "Bearer {{ tower_token }}"
+        body:
+        body_format: json
+        validate_certs: false
+        use_proxy: false
+      register: tmp_output
+      loop: "{{ host_groups }}"
+      when: create_host.status == 201
+
+    - name: 'Extract results'
+      set_fact:
+        host_groups_id_tmp: "{{ host_groups_id_tmp + item.json.results }}"
+
+      loop: "{{ tmp_output.results }}"
+
+    - name: 'Extract ID'
+      set_fact:
+        host_groups_id: "{{ host_groups_id + [item.id] }}"
+      loop: "{{ host_groups_id_tmp }}"
+
+    - name: 'debug'
+      debug:
+        msg: "{{ host_groups_id }}"
+
+    - name: 'Add host_groups'
+      uri:
+        url: "{{ tower_url }}/api/v2/hosts/{{ create_host.json.id }}/groups/"
+        method: POST
+        headers:
+          Content-Type: 'application/json'
+          Authorization: "Bearer {{ tower_token }}"
+        body:
+          id: "{{ item }}"
+        body_format: json
+        force_basic_auth: true
+        validate_certs: false
+        use_proxy: false
+        status_code: 204
+      when:
+      - create_host.status == 201
+      loop: "{{ host_groups_id }}"
+      register: add_host_groups
+
+    - name: 'Store initial password to hashicorp'
+      block:
+            
+        - name: set variables
+          set_fact:
+            query:
+              data:
+                username: "{{ user }}"
+                password: "{{ initial_pass }}" 
+
+        - name: 'call API - Set initial credentials'
+          uri:
+            url: "{{ hashicorp_url }}/data/{{ ostype }}/{{ 'alz_' ~ fqdn }}"
+            validate_certs: "no"
+            method: POST
+            headers:
+              X-Vault-Token: "{{ hashicorp_token }}"
+              Content-Type: "application/json"
+              X-Vault-Request: "true"
+            body_format: json
+            body: "{{ query }}"
+      when: cred_provider == 'hashicorp'
+      no_log: true
+
+...    

@@ -1,0 +1,56 @@
+---
+- name: Add host to group
+  hosts: localhost
+
+
+  tasks:
+    # Parameter examples for hosts
+    # serverlist: alz_dee1xxxx, alz_fre2xxx
+    # groupName: ao1_grp_physical_servers
+
+    - name: Set Variables
+      set_fact:
+
+        tower_url: "{{ lookup('env', 'tower_url') }}"
+        tower_user: "{{ lookup('env', 'tower_user') }}"
+        tower_token: "{{ lookup('env', 'tower_token') }}"
+        inventory_name: "base_inventory"
+        organization_name: "default"
+
+    - name: 'Get host_group IDs'
+      uri:
+        url: "{{ tower_url }}/api/v2/inventories/{{ inventory_name }}++{{ organization_name }}/groups?search={{ groupName }}"
+        method: GET
+        headers:
+          Content-Type: 'application/json'
+          Authorization: "Bearer {{ tower_token }}"
+        body:
+        body_format: json
+        validate_certs: false
+        use_proxy: false
+      register: group_details
+
+    - name: 'Extract results'
+      set_fact:
+        host_group_id: "{{ group_details.json.results[0].id }}"
+
+    - name: Add host to group
+      uri:
+        url: "{{ tower_url }}/api/v2/hosts/{{ server }}++{{ inventory_name }}++{{ organization_name }}/groups/"
+        method: POST
+        headers:
+          Content-Type: 'application/json'
+          Authorization: "Bearer {{ tower_token }}"
+        body: '{ "id": {{ host_group_id }} }'
+        body_format: json
+        force_basic_auth: true
+        validate_certs: false
+        use_proxy: false
+        status_code: 204
+      when: group_details.status == 200
+      loop: "{{ serverList.split(',') }}"
+      loop_control:
+        loop_var: server
+      register: add_host_group_result
+
+...    
